@@ -50,18 +50,41 @@ const isGlobalFunction = (node: SyntaxNode | null, name: string): boolean =>
 type UseAliases = ReadonlyMap<string, string>;
 
 /**
+ * Whether `node` sits in a named namespace: inside a braced
+ * `namespace App { … }`, or after a statement-form `namespace App;`. The
+ * unnamed `namespace { … }` block is the global namespace.
+ */
+const inNamedNamespace = (node: SyntaxNode): boolean => {
+  for (let up = node.parent; up !== null; up = up.parent) {
+    if (up.type === 'namespace_definition') return up.childForFieldName('name') !== null;
+    if (up.type !== 'program') continue;
+    // Statement form: the last `namespace X;` before the node governs it.
+    let named = false;
+    for (const child of up.namedChildren) {
+      if (child.startIndex >= node.startIndex) break;
+      if (child.type === 'namespace_definition' && child.childForFieldName('body') === null) {
+        named = child.childForFieldName('name') !== null;
+      }
+    }
+    return named;
+  }
+  return false;
+};
+
+/**
  * Whether `scope` names Laravel's facade `name` (`view`, `route`): its full
  * name `Illuminate\Support\Facades\View`, or a short name that the file
  * imports from there (or from the global `View` alias Laravel registers). A
- * short name with no import is taken as that global alias. Any other class,
- * such as `App\View`, is not the facade.
+ * short name with no import is the global alias only outside a named
+ * namespace; inside one, PHP resolves it to that namespace's own class. Any
+ * other class, such as `App\View`, is not the facade.
  */
 const isFacade = (scope: SyntaxNode, name: string, aliases: UseAliases): boolean => {
   const facade = `illuminate.support.facades.${name}`;
   const scopeName = normalize(scope.text);
   if (scopeName.includes('.')) return scopeName === facade;
   const imported = aliases.get(scopeName);
-  if (imported === undefined) return scopeName === name;
+  if (imported === undefined) return scopeName === name && !inNamedNamespace(scope);
   return imported === facade || imported === name;
 };
 

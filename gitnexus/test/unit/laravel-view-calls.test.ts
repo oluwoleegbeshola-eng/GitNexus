@@ -78,6 +78,19 @@ App\\response()->view('a.five');
     ).toEqual([]);
   });
 
+  it('takes an unimported short facade name as the global alias only outside a namespace', () => {
+    expect(extract(`<?php\nView::make('a.global');\n`).map((c) => c.viewName)).toEqual([
+      'a.global',
+    ]);
+    expect(
+      extract(`<?php\nnamespace { Route::view('/x', 'a.braced-global'); }\n`).map(
+        (c) => c.viewName,
+      ),
+    ).toEqual(['a.braced-global']);
+    expect(extract(`<?php\nnamespace App;\nView::make('a.one');\n`)).toEqual([]);
+    expect(extract(`<?php\nnamespace App { Route::view('/x', 'a.two'); }\n`)).toEqual([]);
+  });
+
   it('skips names built at runtime and package views', () => {
     expect(
       extract(`<?php
